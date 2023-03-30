@@ -4,4 +4,83 @@ author: "Barb Ribeiro"
 format: html
 editor: visual
 ---
-Deleted and changed
+```{r}
+library(RedditExtractoR)
+library(tidyverse)
+library(tidytext)
+```
+
+## 1. Pull some posts from a subreddit - you can choose the subreddit and if you want to specify particular keywords. Use your text analysis skills to calculate and visualize the top words, excluding stopwords. I'm being deliberately a big vague about how many words - see what looks informative depending on how much you are looking at, the content, etc.
+```{r}
+#grogu_threads <- find_thread_urls(subreddit="starwarsspeculation", keywords="grogu", sort_by="top")
+grogu_threads <- read_rds("grogu_threads.rds")
+```
+```{r}
+grogu_prep <- grogu_threads %>% 
+  pivot_longer(cols = c("title", "text"), names_to = "Type", values_to = "text") %>%
+  select(-Type) %>%
+  filter(!is.na(text) & text != "") %>%
+  mutate(text = tolower(text))
+```
+
+```{r}
+grogu_words <- grogu_prep %>%
+  unnest_tokens(word, text) %>%
+  count(word, sort = TRUE) %>%
+  anti_join(stop_words)
+```
+```{r}
+grogu_words %>%
+  slice_max(n, n = 20) %>%
+  ggplot(aes(n, fct_reorder(word, n))) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "word count", y = NULL)
+```
+bo katan is one person's name so the difference between bo and katan counts is interesting as it shows that most people just refer to her as bo.
+
+## 2. To practice working with lists, pull data on a specific user. It can be yourself if you like! Do a similar word frequency analysis based on their comments. 
+
+```{r}
+#sw_user <- get_user_content("Prus1s")
+sw_user <- read_rds("sw_comments.rds")
+```
+```{r}
+user_comments <- sw_user[["Prus1s"]]$comments
+```
+```{r}
+comment_words <- user_comments %>%
+  filter(!is.na(comment) & comment != "") %>%
+  mutate(comment = tolower(comment)) %>%
+  unnest_tokens(word, comment) %>%
+  count(subreddit, word, sort = TRUE)
+```
+```{r}
+total_comment_words <- comment_words %>%
+  group_by(subreddit) %>%
+  summarize(total = sum(n))
+```
+```{r}
+comment_words <- left_join(comment_words, total_comment_words)
+```
+```{r}
+comment_words <- comment_words %>%
+  anti_join(stop_words) %>%
+  filter(subreddit != "latvia")
+```
+
+```{r}
+comment_tf_idf <- comment_words %>%
+  filter(subreddit %in% c("SteamDeck", "witcher", "GamingLeaksAndRumours")) %>%
+  bind_tf_idf(word, subreddit, n)
+```
+```{r}
+comment_tf_idf %>%
+  group_by(subreddit) %>%
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = subreddit)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~subreddit, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+```
+
